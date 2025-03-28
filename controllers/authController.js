@@ -3,79 +3,88 @@ const { signupSchema, signinSchema, acceptCodeSchema, changePasswordSchema,accep
 const User = require('../models/userModel');
 const { doHash, doHashValidation, hmacProcess } = require('../utils/hashing');
 const transport = require("../middlewares/sendMail");
-
-exports.signup = async(req, res)=>{
-   const {email,password} = req.body;
-   try {
-    const {error, value}= signupSchema.validate({email,password});
-
-    if(error){
-        return res.status(401).json({success:false, message: error.details[0].message})
-    }
-
-    const existingUser = await User.findOne({email});
-    if(existingUser){
-        return res.status(401).json({success:false, message:"User Already Exist!"})
-    }
-
-    const hashedPassword = await doHash(password,12);
-    const newUser = new User({
-        email,
-        password:hashedPassword,
-    })
-    const result = await newUser.save();
-    result.password = undefined;
-    res.status(201).json({
-        success:true, message:"Your Account has been Created Sucessfully!", result
-    })
+const bcrypt = require("bcryptjs");
 
 
-   } catch (error) {
-    console.log(error)
-   }
-};
-
-exports.signin =async(req, res)=>{
-    const{email, password} = req.body;
+exports.signup = async (req, res) => {
+    const { name, email, password } = req.body; 
 
     try {
-        const {error, value}= signinSchema.validate({email,password});
-
-        if(error){
-            return res.status(401).json({success:false, message: error.details[0].message})
-        }
-    
-        const existingUser = await User.findOne({email}).select('+password')
-        if(!existingUser){
-            return res.status(401).json({success:false, message:"User does not Exist!"})
-        }
-
-        const result = await doHashValidation(password, existingUser.password)
-        if(!result){
-            return res.status(401).json({success:false, message:"Invalid Credentials!"})
-        }
-
-        const token = jwt.sign({
-            userId:existingUser._id,
-            email:existingUser.email,
-            verified: existingUser.verified,
-        },
-        process.env.TOKEN_SECRET,{
-            expiresIn:'8h',
-        }
        
-    );
+        const { error, value } = signupSchema.validate({ name, email, password });
+        if (!name || !email || !password) {
+            return res.status(400).json({ success: false, message: "All fields are required!" });
+        }
 
-    res.cookie('Authorization', 'Bearer' + token, {expires: new Date(Date.now() + 8 * 3600000), httpOnly: process.env.NODE_ENV === 'production', secure: process.env.NODE_ENV === 'production'}).json({
-        success:true,
-        token,
-        mesage: 'logged in successfully',
+        if (error) {
+            return res.status(401).json({ success: false, message: error.details[0].message });
+        }
 
-    });
+        
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(401).json({ success: false, message: "User Already Exists!" });
+        }
+
+      
+        const hashedPassword = await doHash(password, 12);
+        
+        
+        const newUser = new User({
+            name, 
+            email,
+            password: hashedPassword,
+        });
+
+        const result = await newUser.save();
+        result.password = undefined; 
+        
+        return res.status(201).json({
+            success: true,
+            message: "Your Account has been Created Successfully!",
+            user: result,
+        });
+
+    } catch (error) {
+        console.error("Signup Error:", error);
+        return res.status(500).json({ success: false, message: "Server error. Please try again later." });
+    }
+};
+
+
+exports.signin = async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        const existingUser = await User.findOne({ email }).select("+password");
+        if (!existingUser) {
+            return res.status(401).json({ error: "User does not exist!" });
+        }
+
+        const isValidPassword = await bcrypt.compare(password, existingUser.password);
+        if (!isValidPassword) {
+            return res.status(401).json({ error: "Invalid Credentials!" });
+        }
+
+        const token = jwt.sign(
+            { userId: existingUser._id, email: existingUser.email },
+            process.env.TOKEN_SECRET,
+            { expiresIn: "8h" }
+        );
+
+        res.cookie("Authorization", "Bearer " + token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production"
+        });
+
+        return res.status(200).json({ message: "Login successful!", token });
     } catch (error) {
         console.log(error);
+        res.status(500).json({ error: "Something went wrong." });
     }
-}
+};
+
+
 exports.signout = async (req, res)=>{
     res.clearCookie('Authirization').status(200).json({success:true, message: "Logged Out Successfully"})
 }

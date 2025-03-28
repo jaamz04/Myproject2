@@ -2,6 +2,15 @@ const { required, number } = require('joi');
 const mongoose = require('mongoose');
 
 const userSchema = mongoose.Schema({
+    name: {
+        type: String,
+        required: [true, "Name is required!"], 
+        trim: true,
+        minLength: [2, "Name must have at least 2 characters!"],
+        maxLength: [50, "Name cannot exceed 50 characters!"],
+        match: [/^[a-zA-Z\s]+$/, "Name can only contain letters and spaces!"], 
+    },
+
     email:{
         type:String,
         required:[true, 'Email is required!'],
